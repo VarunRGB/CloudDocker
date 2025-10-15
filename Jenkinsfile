@@ -3,9 +3,9 @@ pipeline {
     agent any 
 
     environment {
-        // FIX: Explicitly setting the DOCKER_HOST for Windows Jenkins agents
-        // This helps the bat command find the running Docker daemon via named pipe
-        DOCKER_HOST = 'tcp://localhost:2375' // Common setting for direct access, or adjust if needed
+        // FIX: Using the Windows Named Pipe to reliably connect the Jenkins agent 
+        // to the Docker daemon on the Windows machine.
+        DOCKER_HOST = 'npipe:////./pipe/docker_engine'
     }
 
     options {
@@ -25,11 +25,11 @@ pipeline {
             steps {
                 script {
                     echo "--- Running Docker Diagnostics ---"
-                    // Confirming Docker is reachable in the pipeline environment
+                    // This should now successfully show the Docker info
                     bat "docker info" 
                     
                     echo "--- Building all services defined in docker-compose.yml ---"
-                    // Using the explicit filename to avoid 'file not found'
+                    // Building the images using the named pipe connection
                     bat "docker-compose -f docker-compose.yml build" 
                     echo "All Docker images successfully built!"
                 }
@@ -56,8 +56,9 @@ pipeline {
                 // Give containers time to initialize
                 bat 'timeout /t 5 /nobreak'
                 
-                // 1. Verify the frontend is accessible
+                // 1. Verify the frontend is accessible (Note: Requires 'curl' or a similar tool in your Windows path)
                 echo "Verifying Frontend accessibility at localhost:80"
+                // If 'curl' fails, you may need to use 'powershell "Invoke-WebRequest -Uri http://localhost:80 -UseBasicParsing"'
                 bat "curl -s http://localhost:80 | findstr /c:\"Welcome to the Automated Shop!\""
                 
                 // 2. Verify the internal catalog service
