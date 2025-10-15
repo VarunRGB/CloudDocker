@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # ------------------------------------------------------------------
+  # Frontend Service (The Web Interface)
+  # ------------------------------------------------------------------
+  ecom-frontend:
+    # 1. BUILD Context: Tells 'docker-compose build' where to find files
+    build:
+      context: ./frontend  # Look in the './frontend' directory
+      dockerfile: Dockerfile
+    
+    # 2. RUN Configuration
+    image: ecom-frontend:latest # Name/Tag the resulting image
+    container_name: ecom-frontend
+    ports:
+      # Map host port 80 to container port 5000 for public access
+      - "80:5000"
+    networks:
+      - ecom_network
+    # Ensures the catalog is ready before attempting to start the frontend
+    depends_on:
+      - ecom-catalog
+    restart: always
+
+  # ------------------------------------------------------------------
+  # Catalog Service (The Backend Data API)
+  # ------------------------------------------------------------------
+  ecom-catalog:
+    # 1. BUILD Context
+    build:
+      context: ./catalog   # Look in the './catalog' directory
+      dockerfile: Dockerfile
+      
+    # 2. RUN Configuration
+    image: ecom-catalog:latest  # Name/Tag the resulting image
+    container_name: ecom-catalog
+    # This service is internal; it is NOT exposed to the host machine
+    networks:
+      - ecom_network
+    restart: always
+
+# Define a custom, isolated network for services to communicate securely
+networks:
+  ecom_network:
+    driver: bridge
