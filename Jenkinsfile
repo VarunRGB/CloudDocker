@@ -1,10 +1,14 @@
 pipeline {
-    // Defines that the pipeline should run on any available agent (like your Jenkins server)
-    // IMPORTANT: This agent must have Docker and Docker Compose installed.
+    // IMPORTANT: Docker Desktop must be running on the Jenkins host machine
     agent any 
 
+    environment {
+        // FIX: Explicitly setting the DOCKER_HOST for Windows Jenkins agents
+        // This helps the bat command find the running Docker daemon via named pipe
+        DOCKER_HOST = 'tcp://localhost:2375' // Common setting for direct access, or adjust if needed
+    }
+
     options {
-        // Automatically abort builds that take longer than 15 minutes
         timeout(time: 15, unit: 'MINUTES')
     }
 
@@ -20,9 +24,13 @@ pipeline {
         stage('Docker Compose Build') {
             steps {
                 script {
+                    echo "--- Running Docker Diagnostics ---"
+                    // Confirming Docker is reachable in the pipeline environment
+                    bat "docker info" 
+                    
                     echo "--- Building all services defined in docker-compose.yml ---"
-                    // CHANGED: Using 'bat' for Windows execution
-                    bat "docker-compose build" 
+                    // Using the explicit filename to avoid 'file not found'
+                    bat "docker-compose -f docker-compose.yml build" 
                     echo "All Docker images successfully built!"
                 }
             }
@@ -32,12 +40,11 @@ pipeline {
             steps {
                 script {
                     echo "Stopping and removing old containers..."
-                    // CHANGED: Using 'bat' for Windows execution. Using 'cmd /c' to correctly handle the '|| true' on Windows.
-                    bat 'cmd /c "docker-compose down || exit 0"' 
+                    // Use 'exit 0' on failure to prevent pipeline breakage if containers aren't running
+                    bat 'cmd /c "docker-compose -f docker-compose.yml down || exit 0"' 
                     
                     echo "Starting new containers with the newly built images..."
-                    // CHANGED: Using 'bat' for Windows execution
-                    bat 'docker-compose up -d --force-recreate'
+                    bat 'docker-compose -f docker-compose.yml up -d --force-recreate'
                     
                     echo "E-Commerce services deployed. Frontend is on host port 80."
                 }
@@ -46,25 +53,20 @@ pipeline {
 
         stage('Verify Health Check') {
             steps {
-                // Give the containers a few seconds to spin up
-                bat 'timeout /t 5 /nobreak' // CHANGED: Windows equivalent of 'sleep 5'
+                // Give containers time to initialize
+                bat 'timeout /t 5 /nobreak'
                 
-                // 1. Verify the frontend is accessible on the host machine
+                // 1. Verify the frontend is accessible
                 echo "Verifying Frontend accessibility at localhost:80"
-                // WARNING: 'curl' might not exist on Windows. Using 'bat' and assuming curl is in your path, 
-                // OR you can replace this with 'powershell "Invoke-WebRequest -Uri http://localhost:80 -UseBasicParsing | Select-Object -ExpandProperty Content"'
-                // For simplicity, sticking with 'bat' and hoping 'curl' or an alias exists.
                 bat "curl -s http://localhost:80 | findstr /c:\"Welcome to the Automated Shop!\""
                 
-                // 2. Verify the internal catalog service is running (must be done by executing a command inside a container)
+                // 2. Verify the internal catalog service
                 echo "Verifying Catalog (internal health check)"
-                // CHANGED: Using 'bat' for Windows execution. Note the slightly different grep replacement (findstr).
                 bat "docker exec ecom-catalog curl -s http://ecom-catalog:5001/status | findstr /c:\"UP\""
             }
         }
     }
     
-    // Post-build actions for notification and cleanup
     post {
         always {
             echo "CI/CD Pipeline finished."
